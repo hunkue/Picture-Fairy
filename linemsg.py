@@ -19,8 +19,10 @@ from linebot.v3.messaging import (
 )
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
 
-# 設定 logging 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+# 設定 logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 load_dotenv()
@@ -38,11 +40,17 @@ required_env_vars = [
     "GOOGLE_SEARCH_API_URL",
 ]
 
+
 def check_env_variables():
     for var in required_env_vars:
         if not os.getenv(var):
-            logger.error(f"Enviroment variable {var} is not set. Please check your .env file.")
-            raise EnvironmentError(f"Enviroment variable {var} is not set. Please check your .env file.")
+            logger.error(
+                f"Enviroment variable {var} is not set. Please check your .env file."
+            )
+            raise EnvironmentError(
+                f"Enviroment variable {var} is not set. Please check your .env file."
+            )
+
 
 check_env_variables()
 
@@ -230,12 +238,14 @@ def validate_image(image_url: str) -> bool:
 # 搜尋圖片並過濾不合格的圖片
 # 建立一個快取，最多儲存 100 筆資料，並且每筆快取保存 300 秒
 image_cache = TTLCache(maxsize=100, ttl=300)
+
+
 def search_image_with_google(query: str) -> str:
     # 檢查是否有快取的結果
     if query in image_cache:
         logger.info(f"Cache hit for query: {query}")
         return image_cache[query]  # 若快取中有結果，直接返回
-    
+
     params = {
         "key": GOOGLE_API_KEY,
         "cx": CSE_ID,
@@ -266,15 +276,15 @@ def search_image_with_google(query: str) -> str:
                     image_url = wikimedia_url
 
             if not first_image_url:
-                    first_image_url = image_url
-            
+                first_image_url = image_url
+
             try:
                 if validate_image(image_url):  # 確認圖片通過所有驗證
                     valid_image_urls.append(image_url)
                 else:
                     logger.info(f"Skipping restricted image URL: {image_url}")
             except Exception as e:
-                    logger.error(f"Error validating image URL {image_url}: {e}")
+                logger.error(f"Error validating image URL {image_url}: {e}")
 
         if valid_image_urls:
             selected_image = valid_image_urls[0]
@@ -354,7 +364,7 @@ def get_openai_description(query):
             f"{AZURE_OPENAI_ENDPOINT}/openai/deployments/{AZURE_OPENAI_DEPLOYMENT_NAME}/chat/completions?api-version={AZURE_OPENAI_API_VERSION}",
             json=payload,
             headers=headers,
-            timeout=10  # 設定 10 秒超時，避免 API 長時間無響應造成的塞車
+            timeout=10,  # 設定 10 秒超時，避免 API 長時間無響應造成的塞車
         )
 
         response.raise_for_status()  # 檢查狀態碼
