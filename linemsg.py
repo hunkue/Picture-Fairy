@@ -1,7 +1,9 @@
 import os
 import requests
+import logging
 import mimetypes
 from urllib.parse import unquote, urlparse
+from cachetools import TTLCache
 from dotenv import load_dotenv
 from flask import Flask, request, abort
 from requests.exceptions import HTTPError, Timeout, RequestException, ConnectionError
@@ -16,6 +18,10 @@ from linebot.v3.messaging import (
     ImageMessage,
 )
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
+
+# 設定 logging 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -32,9 +38,13 @@ required_env_vars = [
     "GOOGLE_SEARCH_API_URL",
 ]
 
-for var in required_env_vars:
-    if not os.getenv(var):
-        print(f"Enviroment variable {var} is not set. Please check your .env file.")
+def check_env_variables():
+    for var in required_env_vars:
+        if not os.getenv(var):
+            logger.error(f"Enviroment variable {var} is not set. Please check your .env file.")
+            raise EnvironmentError(f"Enviroment variable {var} is not set. Please check your .env file.")
+
+check_env_variables()
 
 app = Flask(__name__)
 
@@ -61,18 +71,18 @@ def callback():
     # 取得簽名
     signature = request.headers.get("X-Line-Signature", "")
     if not signature:
-        app.logger.info("Missing X-Line-Signature.")
+        logger.warning("Missing X-Line-Signature.")
         abort(400)
     # 取得請求 body
     body = request.get_data(as_text=True)
-    app.logger.info("Request body:" + body)
+    logger.info("Request body:" + body)
     # print(f"Request body: {body}")  # Log 訊息
 
     # 處理訊息
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
-        app.logger.info(
+        logger.error(
             "Invalid signature. Please check your channel access token/channel secret."
         )
         abort(400)
@@ -83,7 +93,7 @@ def callback():
 def handle_message(event):
     # 處理使用者訊息
     user_input = event.message.text.strip()
-    print(f"Received message: {user_input}")  # Log 訊息
+    logger.info(f"Received message: {user_input}")  # Log 訊息
 
     # 使用 Google 搜尋圖片
     image_url = search_image_with_google(user_input)
@@ -125,12 +135,12 @@ def fetch_image_head_info(image_url: str):
         if response.status_code == 200 and image_url.startswith("https://"):
             return response
         else:
-            print(
+            logger.warning(
                 f"Image URL not accessible or not secure: {image_url} (Status code: {response.status_code})"
             )
             return None
-    except requests.RequestException as e:
-        print(f"Failed to access image URL: {image_url}, Error: {e}")
+    except RequestException as e:
+        logger.error(f"Failed to access image URL: {image_url}, Error: {e}")
         return None
 
 
@@ -138,7 +148,7 @@ def fetch_image_head_info(image_url: str):
 def is_restricted_domain(image_url: str) -> bool:
     restricted_domains = ["fbsbx.com"]
     if any(domain in image_url for domain in restricted_domains):
-        print(f"Skipping restricted image URL: {image_url}")
+        logger.info(f"Skipping restricted image URL: {image_url}")
         return True
     return False
 
@@ -148,7 +158,7 @@ def validate_mime_type(image_url: str) -> bool:
     mime_type, _ = mimetypes.guess_type(image_url)
     validate_mime_types = ["image/jpeg", "image/png", "image/gif"]
     if mime_type not in validate_mime_types:
-        print(
+        logger.warning(
             f"Invalid MIME type based on file extension: {mime_type} for URL: {image_url}"
         )
         # 進一步嘗試請求圖片的內容
@@ -156,12 +166,12 @@ def validate_mime_type(image_url: str) -> bool:
             response = requests.head(image_url, allow_redirects=True)
             mime_type = response.headers.get("Content-Type")
             if mime_type not in validate_mime_types:
-                print(
+                logger.warning(
                     f"Invalid MIME type from Content-Type: {mime_type} for URL: {image_url}"
                 )
             return False
         except Exception as e:
-            print(f"Error checking MIME type for URL: {image_url}, Error: {e}")
+            logger.error(f"Error checking MIME type for URL: {image_url}, Error: {e}")
             return False
     return True
 
@@ -172,7 +182,7 @@ def validate_image_size(response) -> bool:
         content_length = int(response.headers.get("Content-Length", 0))
         return content_length <= 10 * 1024 * 1024
     except Exception as e:
-        print(f"Failed to validate image size: {e}")
+        logger.error(f"Failed to validate image size: {e}")
         return False
 
 
@@ -183,42 +193,49 @@ def check_image_format_by_content(image_url: str) -> bool:
         if response.status_code == 200:
             content_type = response.headers.get("Content-Type", "")
             if "image" not in content_type:
-                print(f"Not an image: {image_url}")
+                logger.info(f"Not an image: {image_url}")
                 return False
             # 進一步檢查圖片格式
             if "webp" in content_type:
-                print(f"Skipping WebP image: {image_url}")
+                logger.info(f"Skipping WebP image: {image_url}")
                 return False
             return True
     except Exception as e:
-        print(f"Error fetching image content: {image_url}, Error: {e}")
+        logger.error(f"Error fetching image content: {image_url}, Error: {e}")
     return False
 
 
 # 主驗證流程
 def validate_image(image_url: str) -> bool:
     if is_restricted_domain(image_url):
-        print(f"Image rejected due to restricted domain: {image_url}")
+        logger.info(f"Image rejected due to restricted domain: {image_url}")
         return False
     response = fetch_image_head_info(image_url)
     if not response:
-        print(f"Image rejected due to inaccessible or insecure URL: {image_url}")
+        logger.info(f"Image rejected due to inaccessible or insecure URL: {image_url}")
         return False
     if not validate_mime_type(image_url):
-        print(f"Image rejected due to invalid MIME type: {image_url}")
+        logger.info(f"Image rejected due to invalid MIME type: {image_url}")
         return False
     if not validate_image_size(response):
-        print(f"Image rejected due to size too large: {image_url}")
+        logger.info(f"Image rejected due to size too large: {image_url}")
         return False
     if not check_image_format_by_content(image_url):
-        print(f"Image rejected due to unsupported format: {image_url}")
+        logger.info(f"Image rejected due to unsupported format: {image_url}")
         return False
-    print(f"Image is valid: {image_url}")
+    logger.info(f"Image is valid: {image_url}")
     return True
 
 
 # 搜尋圖片並過濾不合格的圖片
+# 建立一個快取，最多儲存 100 筆資料，並且每筆快取保存 300 秒
+image_cache = TTLCache(maxsize=100, ttl=300)
 def search_image_with_google(query: str) -> str:
+    # 檢查是否有快取的結果
+    if query in image_cache:
+        logger.info(f"Cache hit for query: {query}")
+        return image_cache[query]  # 若快取中有結果，直接返回
+    
     params = {
         "key": GOOGLE_API_KEY,
         "cx": CSE_ID,
@@ -227,55 +244,63 @@ def search_image_with_google(query: str) -> str:
         "num": 5,  # 回傳 5 張圖片
     }
     first_image_url = None
+    valid_image_urls = []
     try:
         response = requests.get(GOOGLE_SEARCH_API_URL, params=params)
         response.raise_for_status()  # 確保狀態碼為 200
         search_results = response.json()
         # Log 回傳結果，查看 JSON 結構
         # print(f"Google search response: {search_results}")
-
-        if "items" in search_results and len(search_results["items"]) > 0:
-            valid_image_urls = []
-            for item in search_results["items"]:
-                image_url = item["link"]
-                # print(f"Checking image URL: {image_url}")  # 印出每一個檢查的圖片 URL
-                if "wikimedia.org" in image_url:
-                    # 如果圖片來自 Wikimedia，使用 Wikimedia API 來獲取詳細訊息
-                    wikimedia_url = get_wikimedia_image_url(image_url)
-                    if wikimedia_url:
-                        image_url = wikimedia_url
-                if not first_image_url:
-                    first_image_url = image_url
-                try:
-                    if validate_image(image_url):  # 確認圖片通過所有驗證
-                        valid_image_urls.append(image_url)
-                    else:
-                        print(f"Skipping restricted image URL: {image_url}")
-                except Exception as e:
-                    print(f"Error validating image URL {image_url}: {e}")
-            if valid_image_urls:
-                print(f"Valid image found: {valid_image_urls[0]}")
-                return valid_image_urls[0]
-            else:
-                print("No valid images found after filtering.")
-                return first_image_url or "找不到來源有效安全或可訪問的圖片"
-        else:
-            print("No images found for query")
+        # 解析搜尋結果
+        items = search_results.get("items", [])
+        if not items:
+            image_cache[query] = "找不到相關圖片"
             return "找不到相關圖片"
+        for item in items:
+            image_url = item["link"]
+            # print(f"Checking image URL: {image_url}")  # 印出每一個檢查的圖片 URL
+            if "wikimedia.org" in image_url:
+                # 如果圖片來自 Wikimedia，使用 Wikimedia API 來獲取詳細訊息
+                wikimedia_url = get_wikimedia_image_url(image_url)
+                if wikimedia_url:
+                    image_url = wikimedia_url
+
+            if not first_image_url:
+                    first_image_url = image_url
+            
+            try:
+                if validate_image(image_url):  # 確認圖片通過所有驗證
+                    valid_image_urls.append(image_url)
+                else:
+                    logger.info(f"Skipping restricted image URL: {image_url}")
+            except Exception as e:
+                    logger.error(f"Error validating image URL {image_url}: {e}")
+
+        if valid_image_urls:
+            selected_image = valid_image_urls[0]
+            logger.info(f"Valid image found: {selected_image}")
+            # 將結果存入快取
+            image_cache[query] = selected_image
+            return selected_image
+        else:
+            logger.info("No valid images found after filtering.")
+            image_cache[query] = first_image_url or "找不到來源有效安全或可訪問的圖片"
+            return first_image_url or "找不到來源有效安全或可訪問的圖片"
+
     except HTTPError as http_err:
-        print(f"HTTP error occurred: {http_err}")
+        logger.error(f"HTTP error occurred: {http_err}")
         return "圖片搜尋失敗，請稍後再試"
     except Timeout as timeout_err:
-        print(f"Timeout error occured: {timeout_err}")
+        logger.error(f"Timeout error occured: {timeout_err}")
         return "請求超時，請稍後再試"
     except ConnectionError as conn_err:
-        print(f"Connection error occurred: {conn_err}")
+        logger.error(f"Connection error occurred: {conn_err}")
         return "網路連線失敗，請檢查您的網路連線"
     except RequestException as req_err:
-        print(f"Request error occurred: {req_err}")
+        logger.error(f"Request error occurred: {req_err}")
         return "請求錯誤，請稍候再試"
     except KeyError as e:
-        print(f"Unexpected response format: {e}")
+        logger.error(f"Unexpected response format: {e}")
         return "圖片解析失敗"
 
 
@@ -297,7 +322,7 @@ def get_wikimedia_image_url(image_url: str) -> str:
 
         pages = data.get("query", {}).get("pages", {})
         for page_id, page_data in pages.items():
-            print(f"Processing page_id: {page_id}")  # 日誌紀錄 page_id
+            logger.info(f"Processing page_id: {page_id}")  # 日誌紀錄 page_id
 
             if "imageinfo" in page_data:
                 image_info = page_data["imageinfo"][0]
@@ -305,13 +330,13 @@ def get_wikimedia_image_url(image_url: str) -> str:
                 if image_url:
                     return image_url
                 else:
-                    print(f"Image URL not found for file:{filename}")
+                    logger.warning(f"Image URL not found for file:{filename}")
                     return None
 
-        print(f"No image info found for file: {filename}")
+        logger.warning(f"No image info found for file: {filename}")
         return None  # 無法獲取圖片資訊，返回 None
-    except requests.RequestException as e:
-        print(f"Error fetching wikimedia image info: {e}")
+    except RequestException as e:
+        logger.error(f"Error fetching wikimedia image info: {e}")
         return image_url
 
 
@@ -329,16 +354,22 @@ def get_openai_description(query):
             f"{AZURE_OPENAI_ENDPOINT}/openai/deployments/{AZURE_OPENAI_DEPLOYMENT_NAME}/chat/completions?api-version={AZURE_OPENAI_API_VERSION}",
             json=payload,
             headers=headers,
+            timeout=10  # 設定 10 秒超時，避免 API 長時間無響應造成的塞車
         )
 
-        if response.status_code == 200:
-            ai_response = response.json()["choices"][0]["message"]["content"].strip()
-            return ai_response
-        else:
-            return "無法生成描述，請提供更多細節"
-    except Exception as e:
-        print(f"Error during OpenAI API call: {e}")
-        return "無法生成描述，請稍候再試"
+        response.raise_for_status()  # 檢查狀態碼
+        ai_response = response.json()["choices"][0]["message"]["content"].strip()
+        return ai_response
+
+    except Timeout as e:
+        logger.error(f"Timeout occured while calling OpenAI API: {e}")
+        return "請求超時，請稍候再試"
+    except HTTPError as e:
+        logger.error(f"HTTP error occurred: {e}")
+        return "API 服務出現錯誤，請稍候再試"
+    except RequestException as e:
+        logger.error(f"Request error occurred: {e}")
+        return "請求錯誤，請稍候再試"
 
 
 def generate_openai_payload(query):
