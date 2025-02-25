@@ -27,6 +27,7 @@ def search_image_with_google(query: str) -> str:
         "cx": CSE_ID,
         "q": query,  # 搜尋的關鍵字
         "searchType": "image",  # 指定搜尋圖片
+        "imgsz" : "medium" or "large" or "xlarge",
         "start": 0,
         "num": 5,  # 回傳 5 張圖片
     }
