@@ -1,0 +1,14 @@
+[project]
+name = "linebot"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "cachetools>=6.0.0",
+    "dotenv>=0.9.9",
+    "flask>=3.1.1",
+    "gunicorn>=23.0.0",
+    "line-bot-sdk>=3.17.1",
+    "requests>=2.32.4",
+]
