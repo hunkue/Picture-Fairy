@@ -1,12 +1,12 @@
-# Picture-Fairy 🧚‍♀️
+# Picture Fairy 🧚‍♀️
 
 ![Python version](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Repo size](https://img.shields.io/github/repo-size/hunkue/Picture-Fairy)
-![Last commit](https://img.shields.io/github/last-commit/hunkue/Picture-Fairy)
-![Issues](https://img.shields.io/github/issues/hunkue/Picture-Fairy)
+![Repo size](https://img.shields.io/github/repo-size/hunkue/picture-fairy)
+![Last commit](https://img.shields.io/github/last-commit/hunkue/picture-fairy)
+![Issues](https://img.shields.io/github/issues/hunkue/picture-fairy)
 
-Picture-Fairy is an AI-powered LINE Bot that allows users to search for images simply by sending text. The bot will:
+Picture Fairy is an AI-powered LINE Bot that allows users to search for images simply by sending text. The bot will:
 
 1. Use the OpenAI API to generate a semantic explanation for the keyword  
 2. Use the Google Search API to retrieve the most relevant image and return it via LINE
@@ -27,16 +27,21 @@ Perfect for learning new concepts, generating visual inspiration, or just chatti
 
 ## 🛠️ Installation & Setup
 
-### 1. Initialize Project
+### 1. Clone the Repository
 
 ```bash
-uv init        # Run once if pyproject.toml does not exist
-uv venv
-source .venv/bin/activate
-uv sync        # Install all dependencies
+git clone https://github.com/hunkue/picture-fairy.git
+cd picture-fairy
 ```
 
-### 2. Set Environment Variables
+### 2. Set Up Environment with uv
+
+```bash
+uv sync
+source .venv/bin/activate
+```
+
+### 3. Set Environment Variables
 
 Create a `.env` file and add the following:
 
@@ -44,8 +49,9 @@ Create a `.env` file and add the following:
 LINE_CHANNEL_SECRET=your_line_secret
 LINE_CHANNEL_ACCESS_TOKEN=your_line_token
 OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxx
-GOOGLE_SEARCH_API_KEY=your_google_api_key
-GOOGLE_CSE_ID=your_custom_search_engine_id
+GOOGLE_SEARCH_API_KEY=your_custom_search_api_key
+GOOGLE_CSE_ID=your_custom_search_id
+GOOGLE_SEARCH_API_URL=your_custom_search_url
 ```
 
 Alternatively, edit `setting.py` to manage configs directly.
@@ -57,15 +63,22 @@ Alternatively, edit `setting.py` to manage configs directly.
 ### Local Development (FastAPI)
 
 ```bash
-uv run python app.py
+uv run app.py
 ```
 
-This will start a local server on `localhost:5050` (or specified port). Use [ngrok](https://ngrok.com/) for webhook testing.
+This will start a local server on the specified port set in `app.py`. Use [ngrok](https://ngrok.com/) for webhook testing.
 
 ### Production Deployment (Gunicorn)
 
+For production use, it's recommended to run the app with Gunicorn for better performance and concurrency support.
+
 ```bash
 uv run gunicorn app:app --config gunicorn_config.py
+```
+Or override the port as needed:
+
+```bash
+uv run gunicorn app:app --bind 0.0.0.0:<your_port>
 ```
 
 Or use WSGI:
@@ -88,7 +101,7 @@ uv run gunicorn wsgi:app
 ## 📁 Project Structure
 
 ```text
-.
+picture-fairy/
 ├── app.py                 # FastAPI entry point
 ├── wsgi.py                # WSGI entry point
 ├── handler.py             # Handles routing and message logic
@@ -99,7 +112,7 @@ uv run gunicorn wsgi:app
 │   ├── __init__.py
 │   ├── openai.py          # OpenAI API integration
 │   ├── search.py          # Google Search API integration
-│   └── validation.py      # LINE signature verification
+│   └── validation.py      # Image validation for URL, format, size, and MIME type
 ├── pyproject.toml         # uv dependency manager config
 ├── uv.lock                # uv lock file
 ├── LICENSE
@@ -119,10 +132,3 @@ uv run gunicorn wsgi:app
 ## 📄 License
 
 This project is licensed under the **MIT License**, feel free to use and modify it.
-
----
-
-## 🙋‍♂️ Author
-
-- **[hunkue](https://github.com/hunkue)**  
-  If you find this project helpful, give it a ⭐ or share it with other AI/chatbot enthusiasts 🙌
